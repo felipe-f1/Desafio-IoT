@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS sensor_data (
 -- Create hypertable partitioned by time
 SELECT create_hypertable('sensor_data', by_range('time'));
 
+-- Create explicit index on time descending
+CREATE INDEX IF NOT EXISTS idx_sensor_data_time ON sensor_data (time DESC);
+
 -- Optional: Create Continuous Aggregate for 1-minute summaries for fast querying later if needed
 -- CREATE MATERIALIZED VIEW IF NOT EXISTS sensor_data_1m 
 -- WITH (timescaledb.continuous) AS

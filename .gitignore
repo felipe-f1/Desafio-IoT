@@ -1,0 +1,26 @@
+# dependências
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+venv/
+ENV/
+env/
+
+# os
+.DS_Store
+Thumbs.db
+
+# docker
+.dockerignore
