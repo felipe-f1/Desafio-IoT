@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rootpassword
+      POSTGRES_DB: iot_dashboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d iot_dashboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:rootpassword@db:5432/iot_dashboard
+      - SECRET_KEY=minha_chave_super_secreta_jwt
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws/stream
+    depends_on:
+      - backend
+
+  proxy:
+    build:
+      context: ./proxy
+    ports:
+      - "8080:80"
+    depends_on:
+      - frontend
+      - backend
+
+  edge:
+    build:
+      context: ./edge
+    environment:
+      - WS_SERVER_URL=ws://backend:8000/ws/ingest
+    depends_on:
+      - backend
