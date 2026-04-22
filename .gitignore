@@ -1,26 +1,26 @@
-# dependências
+# Dependencies
 node_modules/
 .pnp
 .pnp.js
 
-# next.js
+# Next.js
 .next/
 out/
 build/
 
-# python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.env
+.env
 .venv/
 venv/
 ENV/
 env/
 
-# os
+# OS
 .DS_Store
 Thumbs.db
 
-# docker
-.dockerignore
+# Local publish workspace
+.publish-repo/

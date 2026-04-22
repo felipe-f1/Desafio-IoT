@@ -1,65 +1,134 @@
 import asyncio
+import contextlib
 import json
+import os
 import random
 import time
 from collections import deque
-import websockets
-import os
+from dataclasses import dataclass
 
-WS_SERVER_URL = os.getenv("WS_SERVER_URL", "ws://localhost:8000/ws/ingest")
+import aiomqtt
 
-async def sensor_loop():
-    buffer_v = deque(maxlen=5)
-    buffer_i = deque(maxlen=5)
-    
-    print(f"Virtual Sensor started, connecting to {WS_SERVER_URL}...")
-    
+if os.name == "nt":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "localhost")
+MQTT_SENSOR_TOPIC = os.getenv("MQTT_SENSOR_TOPIC", "iot/sensor/data")
+MQTT_CONFIG_TOPIC = os.getenv("MQTT_CONFIG_TOPIC", "iot/sensor/config")
+
+
+@dataclass
+class SensorConfig:
+    interval_ms: int = 500
+    moving_average_window: int = 5
+
+
+class VirtualPowerSensor:
+    def __init__(self) -> None:
+        self.config = SensorConfig()
+        self.voltage_buffer: deque[float] = deque(maxlen=self.config.moving_average_window)
+        self.current_buffer: deque[float] = deque(maxlen=self.config.moving_average_window)
+        self.sequence = 0
+
+    def apply_config(self, payload: dict[str, int]) -> None:
+        interval_ms = int(payload.get("interval_ms", self.config.interval_ms))
+        window = int(payload.get("moving_average_window", self.config.moving_average_window))
+
+        self.config.interval_ms = min(max(interval_ms, 100), 5000)
+        window = min(max(window, 1), 30)
+
+        if window != self.config.moving_average_window:
+            self.config.moving_average_window = window
+            self.voltage_buffer = deque(self.voltage_buffer, maxlen=window)
+            self.current_buffer = deque(self.current_buffer, maxlen=window)
+
+        print(
+            "Config applied: "
+            f"interval_ms={self.config.interval_ms}, "
+            f"moving_average_window={self.config.moving_average_window}"
+        )
+
+    def next_sample(self) -> dict[str, float | int]:
+        self.sequence += 1
+
+        voltage = random.uniform(216.0, 224.0)
+        current = random.uniform(8.0, 12.0)
+        power_factor = random.uniform(0.92, 0.99)
+
+        if self.sequence % 80 == 0:
+            voltage *= random.choice([0.35, 1.9])
+            current *= random.choice([0.45, 1.8])
+            print("Injected outlier noise")
+
+        self.voltage_buffer.append(voltage)
+        self.current_buffer.append(current)
+
+        avg_voltage = sum(self.voltage_buffer) / len(self.voltage_buffer)
+        avg_current = sum(self.current_buffer) / len(self.current_buffer)
+        active_power = avg_voltage * avg_current * power_factor
+
+        return {
+            "timestamp": int(time.time() * 1000),
+            "voltage": round(avg_voltage, 2),
+            "current": round(avg_current, 2),
+            "power": round(active_power, 2),
+        }
+
+    def should_drop_connection(self) -> bool:
+        return self.sequence > 0 and self.sequence % 240 == 0
+
+
+async def config_listener(client: aiomqtt.Client, sensor: VirtualPowerSensor) -> None:
+    async for message in client.messages:
+        if str(message.topic) != MQTT_CONFIG_TOPIC:
+            continue
+
+        try:
+            payload = json.loads(message.payload.decode())
+            sensor.apply_config(payload)
+        except Exception as exc:
+            print(f"Invalid config ignored: {exc}")
+
+
+async def sensor_loop() -> None:
+    sensor = VirtualPowerSensor()
+    print(f"Virtual sensor connecting to MQTT broker at {MQTT_BROKER_URL}")
+
     while True:
         try:
-            async with websockets.connect(WS_SERVER_URL) as ws:
-                print("Connected to server.")
-                count = 0
-                while True:
-                    # Generate base values
-                    v = random.uniform(215.0, 225.0)
-                    i = random.uniform(8.0, 12.0)
-                    
-                    # Outliers/Noise every ~100 iterations
-                    count += 1
-                    if count % 100 == 0:
-                        v *= random.choice([0.1, 5.0]) # Surge or drop
-                        print("Generated noise outlier!")
-                        
-                    # Simulate Connection Drops (Wait to trigger timeout logic in backend/frontend, although NextJS keeps WS alive)
-                    # We simply sleep longer to simulate drop
-                    if count % 300 == 0:
-                        print("Simulating connection drop...")
-                        await asyncio.sleep(5)
-                    
-                    # Moving Average Filter
-                    buffer_v.append(v)
-                    buffer_i.append(i)
-                    
-                    avg_v = sum(buffer_v) / len(buffer_v)
-                    avg_i = sum(buffer_i) / len(buffer_i)
-                    avg_p = avg_v * avg_i  # Power in W
-                    
-                    payload = {
-                        "timestamp": int(time.time() * 1000),
-                        "voltage": round(avg_v, 2),
-                        "current": round(avg_i, 2),
-                        "power": round(avg_p, 2)
-                    }
-                    
-                    await ws.send(json.dumps(payload))
-                    await asyncio.sleep(0.5)  # 500ms specification
-                    
-        except websockets.ConnectionClosed:
-            print("WS Connection Closed, retrying in 2 seconds...")
+            async with aiomqtt.Client(MQTT_BROKER_URL) as client:
+                await client.subscribe(MQTT_CONFIG_TOPIC)
+                listener_task = asyncio.create_task(config_listener(client, sensor))
+                print("Connected to MQTT broker")
+
+                try:
+                    while True:
+                        payload = sensor.next_sample()
+                        await client.publish(
+                            MQTT_SENSOR_TOPIC,
+                            payload=json.dumps(payload),
+                            qos=1,
+                        )
+
+                        if sensor.should_drop_connection():
+                            print("Simulating connection drop")
+                            break
+
+                        await asyncio.sleep(sensor.config.interval_ms / 1000)
+                finally:
+                    listener_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await listener_task
+
+        except aiomqtt.MqttError:
+            print("MQTT connection error; retrying in 2 seconds")
             await asyncio.sleep(2)
-        except Exception as e:
-            print(f"Error in sensor: {e}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"Sensor error: {exc}; retrying in 2 seconds")
             await asyncio.sleep(2)
+
 
 if __name__ == "__main__":
     asyncio.run(sensor_loop())

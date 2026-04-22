@@ -5,3 +5,7 @@ pyjwt
 passlib[bcrypt]
 websockets
 python-multipart
+aiomqtt
+pytest
+httpx
+gunicorn

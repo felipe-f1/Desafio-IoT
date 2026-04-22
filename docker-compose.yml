@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: timescale/timescaledb:latest-pg14
@@ -11,6 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - timescale_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d iot_dashboard"]
       interval: 5s
@@ -62,3 +61,6 @@ services:
       - MQTT_BROKER_URL=broker
     depends_on:
       - broker
+
+volumes:
+  timescale_data:

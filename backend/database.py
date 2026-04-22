@@ -1,62 +1,131 @@
-import os
-import asyncpg
 import logging
+import os
+from typing import Any
 
-logger = logging.getLogger("api")
+import asyncpg
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:rootpassword@localhost:5432/iot_dashboard")
+logger = logging.getLogger("iot-dashboard")
 
-pool = None
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:rootpassword@localhost:5432/iot_dashboard",
+)
 
-async def init_db():
+pool: asyncpg.Pool | None = None
+
+
+async def init_db() -> None:
     global pool
-    try:
-        pool = await asyncpg.create_pool(DATABASE_URL)
-        logger.info("Connected to TimescaleDB!")
-    except Exception as e:
-        logger.error(f"Error connecting to database: {e}")
-        raise e
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+    logger.info("Connected to PostgreSQL/TimescaleDB")
 
-async def close_db():
+
+async def close_db() -> None:
     global pool
-    if pool:
+    if pool is not None:
         await pool.close()
-        logger.info("Database connection closed.")
+        pool = None
+        logger.info("Database connection closed")
 
-async def insert_sensor_data(voltage: float, current: float, power: float):
-    global pool
+
+async def insert_sensor_data(
+    voltage: float,
+    current: float,
+    power: float,
+    timestamp_ms: int | None = None,
+) -> None:
     if pool is None:
+        logger.warning("Database pool is not initialized; dropping sensor sample")
         return
+
     query = """
         INSERT INTO sensor_data (time, voltage, current, power)
-        VALUES (now(), $1, $2, $3)
+        VALUES (
+            COALESCE(to_timestamp($1::double precision / 1000.0), now()),
+            $2,
+            $3,
+            $4
+        )
     """
     async with pool.acquire() as connection:
-        await connection.execute(query, voltage, current, power)
+        await connection.execute(query, timestamp_ms, voltage, current, power)
 
-async def get_consumption():
-    global pool
+
+async def get_recent_readings(limit: int = 240) -> list[dict[str, Any]]:
     if pool is None:
         return []
-    # Simplified calculation since data comes in 500ms intervals = 0.5 sec
-    # Power (W) to Energy (kWh) in 0.5s: Energy_kWh = Power_W * (0.5 / 3600) / 1000
-    # For cost estimation based on time: 18h-21h is Ponta, else Normal.
-    # Usamos o método físico de Integral (soma de Riemann) utilizando LAG para encontrar a exata diferença de segundos entre os pacotes do sensor (cobertura dos drops).
-    # LEAST(duration, 60) garante que se o sensor ficar off por dias não exploda o cálculo.
+
     query = """
-        WITH deltas AS (
-            SELECT 
+        SELECT
+            (EXTRACT(EPOCH FROM time) * 1000)::bigint AS timestamp,
+            voltage,
+            current,
+            power
+        FROM sensor_data
+        ORDER BY time DESC
+        LIMIT $1
+    """
+    async with pool.acquire() as connection:
+        records = await connection.fetch(query, limit)
+        return [dict(record) for record in reversed(records)]
+
+
+async def get_consumption() -> dict[str, Any]:
+    if pool is None:
+        return {"data": [], "total_kwh": 0.0, "estimated_cost_brl": 0.0}
+
+    query = """
+        WITH ordered AS (
+            SELECT
                 time,
                 power,
-                COALESCE(EXTRACT(EPOCH FROM (time - LAG(time) OVER (ORDER BY time))), 0.5) as duration_sec
+                LAG(time) OVER (ORDER BY time) AS previous_time
             FROM sensor_data
+        ),
+        energy AS (
+            SELECT
+                CASE
+                    WHEN EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') >= 18
+                     AND EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') < 21
+                    THEN 'Ponta'
+                    ELSE 'Normal'
+                END AS tariff_type,
+                CASE
+                    WHEN EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') >= 18
+                     AND EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') < 21
+                    THEN 0.90
+                    ELSE 0.50
+                END AS rate_brl_per_kwh,
+                power
+                    * GREATEST(
+                        0,
+                        LEAST(
+                            COALESCE(EXTRACT(EPOCH FROM (time - previous_time)), 0),
+                            60
+                        )
+                    )
+                    / 3600.0
+                    / 1000.0 AS consumption_kwh
+            FROM ordered
         )
-        SELECT 
-            CASE WHEN EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') >= 18 AND EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') < 21 THEN 'Ponta' ELSE 'Normal' END as tariff_type,
-            SUM(power * LEAST(duration_sec, 60) / 3600.0 / 1000.0) as consumption_kwh
-        FROM deltas
-        GROUP BY tariff_type
+        SELECT
+            tariff_type,
+            rate_brl_per_kwh,
+            COALESCE(SUM(consumption_kwh), 0)::double precision AS consumption_kwh,
+            COALESCE(SUM(consumption_kwh * rate_brl_per_kwh), 0)::double precision AS estimated_cost_brl
+        FROM energy
+        GROUP BY tariff_type, rate_brl_per_kwh
+        ORDER BY tariff_type
     """
     async with pool.acquire() as connection:
         records = await connection.fetch(query)
-        return [dict(record) for record in records]
+
+    data = [dict(record) for record in records]
+    total_kwh = sum(float(record["consumption_kwh"]) for record in data)
+    estimated_cost = sum(float(record["estimated_cost_brl"]) for record in data)
+
+    return {
+        "data": data,
+        "total_kwh": total_kwh,
+        "estimated_cost_brl": estimated_cost,
+    }

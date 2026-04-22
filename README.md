@@ -1,59 +1,109 @@
-# ⚡ IoT Energy Dashboard Challenge
+# IoT Energy Dashboard Challenge
 
-Bem-vindo ao repositório do **IoT Energy Dashboard**, uma solução arquitetônica robusta e completa para monitoramento energético em tempo real, abrangendo desde a simulação do microcontrolador (Edge) até o Frontend com gráficos dinâmicos.
+Protótipo funcional para capturar dados de um sensor virtual de borda, processar as leituras em um backend escalável e exibir indicadores em um dashboard Next.js.
 
-## 🏗️ Arquitetura do Sistema
+## O que está incluído
 
-A arquitetura do projeto é dividida em três pilares principais, com foco absoluto em **alta performance**, **processamento assíncrono** e **resiliência** contra falhas de rede.
+- Edge em Python publicando leituras a cada 500 ms via MQTT.
+- Filtro de média móvel no sensor antes do envio.
+- Simulação de outliers e quedas de conexão no sensor.
+- Backend FastAPI dockerizado.
+- Ingestão em PostgreSQL com TimescaleDB.
+- Tabela temporal com índice por timestamp.
+- Endpoint protegido por JWT para configuração do sensor.
+- Endpoint de consumo acumulado em kWh calculado por integração das leituras de potência.
+- Frontend React/Next.js com gráfico de linha em tempo real e throttling.
+- Cálculo de custo estimado com tarifa normal e horário de ponta.
+- Proxy reverso Nginx roteando frontend, API, docs e WebSocket.
 
-- **`Edge (Sensor Virtual)`**: Um script desenvolvido puramente em Python assíncrono (`asyncio`) que simula leituras elétricas. Implementa cálculos de Média Móvel numa janela (buffer) para suavizar a curva de tensão/corrente, enviando pacotes ao Backend a cada 500ms via WebSockets (nativo, sem necessidade de poling HTTP). O script também injeta `outliers` (ruídos de rede) inteligentemente e simula instabilidades fechando conexões ativas para testar a resiliência de todo o ecossistema.
-- **`Backend (FastAPI)`**: Um núcleo assíncrono central escrito em Python 3 utilizando ASGI. Este componente faz a ponte central da arquitetura:
-  - Ingestão massiva no PostgreSQL com `asyncpg` (driver hyper-performático) garantindo um pool de conexão saudável.
-  - Servidor de autorização baseado em **JWT** (JSON Web Tokens) na rota `/auth/token`.
-  - Exposição de consumo exato usando uma função baseada em Somatória de Riemann, garantindo que "buracos" e perdas de comunicação na conexão WS não inviabilizem o cálculo financeiro em kWh.
-  - Documentação estendida pelo **Swagger UI** com suporte interativo a Security Schemes (OAuth2Bearer) no endpoint `/docs`.
-- **`Frontend (Next.js & React)`**: Dashboard reativo desenhado de ponta a ponta com interface de alto padrão, garantindo efeitos fluidos. Uma camada rigorosa de `throttle` foi adicionada para interceptar as taxas ultra-rápidas do WebSocket, mitigando gargalos no Event Loop do browser, alimentando a biblioteca gráfica nativamente sem congelar a tela.
+## Arquitetura
 
-## 🚀 Como Executar Localmente
+```text
+edge/sensor.py -> MQTT broker -> backend FastAPI -> TimescaleDB
+                                      |
+                                      +-> WebSocket -> frontend Next.js
 
-Você não precisa instalar dependências separadas no seu sistema. O setup inteiro é orquestrado via Docker e Docker Compose.
-
-### Pré-Requisitos
-- Ter o [Docker](https://www.docker.com/products/docker-desktop/) e o **Docker Compose** instalados na máquina.
-
-### Executando em 1 Comando
-
-Na raiz do projeto (onde está o arquivo `docker-compose.yml`), modifique todos os serviços usando o comando:
-
-```bash
-docker-compose up -d --build
+Nginx proxy:
+  /        -> frontend
+  /api/*   -> backend
+  /ws/*    -> backend WebSocket
+  /docs    -> Swagger UI
 ```
 
-O primeiro build criará a imagem Frontend Next.js e compilará as do Python, aguarde alguns instantes.
-Verifique e acompanhe os logs com:
+## Como executar
+
+Pré-requisito: Docker Desktop com Docker Compose.
+
+Na raiz do projeto:
 
 ```bash
-docker-compose logs -f
+docker compose up -d --build
 ```
 
-### URLs de Acesso
+Acompanhe os logs:
 
-Assim que rodar, os seguintes serviços estarão expostos em seu `localhost`:
+```bash
+docker compose logs -f backend edge frontend proxy
+```
 
-* **Dashboard em Tempo Real (Next.js):** [http://localhost:3000](http://localhost:3000)
-  *(A interface faz o auto-login seguro com as credenciais padrão no backend via JWT e abre a conexão WebSockets)*
-* **Visualização da API Swagger UI (FastAPI):** [http://localhost:8080/docs](http://localhost:8080/docs)
-  *(Na interface gráfica, role até o botão superior "Authorize", insira **admin** e **admin** como credenciais e teste os endpoints protegidos, como a rota `GET /api/consumption`)*
+URLs:
 
----
+- Dashboard: [http://localhost:8080](http://localhost:8080)
+- Swagger/FastAPI: [http://localhost:8080/docs](http://localhost:8080/docs)
+- Health check: [http://localhost:8080/health](http://localhost:8080/health)
 
-## 🔥 Features de Destaque
+Credenciais de demonstração:
 
-- [x] **Média Móvel**: Sensor estabilizando leituras localmente via buffers limitados, absorvendo transientes.
-- [x] **Tratamento de Queda de Conexão**: Edge intencionalmente quebra a conexão em ciclos variados simulando 3G em zonas isoladas, provocando rotinas de reconexão.
-- [x] **Throttle Client-Side Control (Otimização UI)**: Eventos de repetição rápida sofrem throttle visual, economizando ciclos de processamento no browser.
-- [x] **Cálculo de Tarifação Real**: Algoritmos no painel trazem estimativas por Horário de Ponta.
-- [x] **Segurança Integrada**: Requisito de desafio completo com o endpoint JWT protegendo relatórios.
-- [x] **Precisão Estatística**: A query em banco não assume que existe taxa constante de chegada. Ela calcula o delta absoluto de tempo gerando o `duration_sec`, que permite que o consumo seja preciso ainda que os pacotes cheguem fora de ordem ou haja delay.
+- Usuário: `admin`
+- Senha: `admin`
 
-*Construído e desenhado como uma arquitetura state-of-the-art.*
+## Endpoints principais
+
+- `POST /api/auth/token`: gera token JWT.
+- `POST /api/sensor/config`: rota protegida por JWT para alterar `interval_ms` e `moving_average_window` do sensor.
+- `GET /api/consumption`: rota protegida por JWT que retorna consumo acumulado em kWh e custo estimado.
+- `GET /api/readings`: retorna leituras recentes para inicializar o gráfico.
+- `WS /ws/stream`: envia leituras em tempo real para o dashboard.
+
+## Banco de dados
+
+O arquivo `init.sql` cria:
+
+- Extensão TimescaleDB.
+- Tabela `sensor_data`.
+- Hypertable particionada por `time`.
+- Índice `idx_sensor_data_time_desc` para consultas rápidas por timestamp.
+
+Para conferir registros:
+
+```bash
+docker compose exec db psql -U postgres -d iot_dashboard -c "SELECT time, voltage, current, power FROM sensor_data ORDER BY time DESC LIMIT 5;"
+```
+
+## Roteiro sugerido para o vídeo
+
+1. Mostrar o comando `docker compose up -d --build`.
+2. Mostrar `docker compose ps` com `db`, `backend`, `frontend`, `proxy`, `broker` e `edge` ativos.
+3. Abrir [http://localhost:8080](http://localhost:8080) e mostrar o gráfico recebendo dados em tempo real.
+4. Mostrar logs do `edge` indicando outliers e quedas de conexão simuladas.
+5. Abrir [http://localhost:8080/docs](http://localhost:8080/docs), autenticar com `admin/admin` e chamar `POST /api/sensor/config`.
+6. Chamar `GET /api/consumption` e mostrar o consumo acumulado em kWh e custo em reais.
+7. Mostrar uma consulta no banco confirmando as leituras salvas.
+
+## Desenvolvimento local
+
+Backend:
+
+```bash
+cd backend
+python -m pip install -r requirements.txt
+python -m pytest -v
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
