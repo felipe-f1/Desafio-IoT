@@ -76,13 +76,14 @@ O índice `idx_sensor_data_time_desc` acelera consultas recentes e agregações 
 
 ## Cálculo de consumo
 
-O consumo acumulado é calculado por integração temporal:
+O consumo acumulado é calculado por integração trapezoidal entre pares de leituras consecutivas:
 
 ```text
-energia_kWh = potência_W * duração_s / 3600 / 1000
+potência_média_W = (potência_anterior_W + potência_atual_W) / 2
+energia_kWh = potência_média_W * duração_s / 3600 / 1000
 ```
 
-O backend usa a diferença entre timestamps consecutivos para calcular `duração_s`. Para evitar distorções em longas quedas de conexão, cada delta é limitado a 60 segundos.
+O backend usa a diferença entre timestamps consecutivos para calcular `duração_s`. Para evitar distorções em longas quedas de conexão, intervalos acima de 5 segundos são ignorados no cálculo agregado.
 
 ## Tarifas
 

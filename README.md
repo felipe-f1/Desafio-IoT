@@ -1,4 +1,4 @@
-# IoT Energy Dashboard
+# Energia IoT Monitor
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)
@@ -6,7 +6,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![TimescaleDB](https://img.shields.io/badge/TimescaleDB-PostgreSQL-FDB515)
 
-Protótipo funcional de monitoramento energético em tempo real. O projeto simula um sensor IoT de borda, processa leituras em um backend FastAPI, persiste dados em TimescaleDB/PostgreSQL e exibe um dashboard Next.js com gráfico em tempo real e custo estimado em reais.
+Protótipo funcional de monitoramento energético em tempo real. O projeto simula um sensor IoT de borda, processa leituras em um backend FastAPI, persiste dados em TimescaleDB/PostgreSQL e exibe o painel Energia IoT Monitor com gráfico em tempo real e custo estimado em reais.
 
 ## Sumário
 
@@ -38,7 +38,7 @@ Fluxo principal:
 2. O Edge aplica filtro de média móvel antes de publicar os dados.
 3. O backend consome mensagens MQTT, salva no banco e envia eventos via WebSocket.
 4. O dashboard atualiza o gráfico com throttling para evitar travamentos.
-5. O consumo acumulado em kWh é calculado a partir das leituras de potência.
+5. O consumo acumulado em kWh é calculado por integração temporal entre leituras consecutivas de potência.
 
 ## Funcionalidades
 
@@ -47,7 +47,7 @@ Fluxo principal:
 - Ingestão MQTT assíncrona no backend.
 - Persistência em TimescaleDB com hypertable e índice por timestamp.
 - Endpoint protegido por JWT para configuração remota do sensor.
-- Endpoint de consumo acumulado em kWh por integração temporal.
+- Endpoint de consumo acumulado em kWh por integração trapezoidal, com filtro para intervalos longos de queda.
 - Tarifa simulada: R$ 0,90/kWh entre 18h e 21h, R$ 0,50/kWh nos demais horários.
 - Dashboard Next.js com gráfico de linha em tempo real e throttling no cliente.
 - Nginx como proxy reverso para frontend, API, Swagger e WebSocket.
@@ -132,7 +132,7 @@ curl -X POST http://localhost:8080/api/auth/token \
 | `GET` | `/health` | Pública | Status da aplicação |
 | `POST` | `/api/auth/token` | Pública | Gera token JWT |
 | `GET` | `/api/readings` | Pública | Lista leituras recentes |
-| `GET` | `/api/consumption` | JWT | Retorna kWh acumulado e custo estimado |
+| `GET` | `/api/consumption` | JWT | Retorna kWh acumulado e custo estimado; aceita `since_minutes` |
 | `POST` | `/api/sensor/config` | JWT | Atualiza intervalo e janela da média móvel |
 | `WS` | `/ws/stream` | Pública | Stream em tempo real para o dashboard |
 

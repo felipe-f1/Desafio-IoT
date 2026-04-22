@@ -6,7 +6,7 @@ from typing import Any
 
 import aiomqtt
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
@@ -187,8 +187,11 @@ async def update_sensor_config(
 
 
 @app.get("/api/consumption", tags=["Analytics"], summary="Calcular consumo acumulado em kWh")
-async def get_total_consumption(user: dict[str, Any] = Depends(verify_token)) -> dict[str, Any]:
-    return await get_consumption()
+async def get_total_consumption(
+    since_minutes: int | None = Query(default=None, ge=1, le=1440),
+    user: dict[str, Any] = Depends(verify_token),
+) -> dict[str, Any]:
+    return await get_consumption(since_minutes=since_minutes)
 
 
 @app.get("/api/readings", tags=["Analytics"], summary="Listar leituras recentes")

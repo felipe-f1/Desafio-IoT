@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "IoT Energy Dashboard",
-  description: "Dashboard em tempo real para sensores de borda.",
+  title: "Energia IoT Monitor",
+  description: "Painel de consumo em tempo real para sensores de borda.",
 };
 
 export default function RootLayout({

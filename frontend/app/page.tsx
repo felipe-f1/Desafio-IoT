@@ -22,6 +22,9 @@ import {
 } from "recharts";
 
 const MAX_POINTS = 160;
+const APP_NAME = "Energia IoT Monitor";
+const APP_TITLE = "Painel de Consumo em Tempo Real";
+const CONSUMPTION_WINDOW_MINUTES = 15;
 
 const moneyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -71,6 +74,8 @@ type ConsumptionPayload = {
   data: ConsumptionRecord[];
   total_kwh: number;
   estimated_cost_brl: number;
+  sample_count: number;
+  since_minutes: number | null;
 };
 
 type ConnectionState = "connecting" | "online" | "offline";
@@ -100,6 +105,8 @@ export default function Home() {
     data: [],
     total_kwh: 0,
     estimated_cost_brl: 0,
+    sample_count: 0,
+    since_minutes: CONSUMPTION_WINDOW_MINUTES,
   });
 
   const pushSample = useMemo(
@@ -186,14 +193,19 @@ export default function Home() {
     if (!token) return;
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/consumption`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetch(
+        `${getApiBaseUrl()}/consumption?since_minutes=${CONSUMPTION_WINDOW_MINUTES}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       const payload = (await response.json()) as ConsumptionPayload;
       setConsumption({
         data: payload.data ?? [],
         total_kwh: Number(payload.total_kwh ?? 0),
         estimated_cost_brl: Number(payload.estimated_cost_brl ?? 0),
+        sample_count: Number(payload.sample_count ?? 0),
+        since_minutes: payload.since_minutes ?? CONSUMPTION_WINDOW_MINUTES,
       });
     } catch (error) {
       console.error("Could not load consumption", error);
@@ -243,10 +255,10 @@ export default function Home() {
         <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-              IoT Energy Dashboard
+              {APP_NAME}
             </p>
             <h1 className="mt-2 text-2xl font-semibold tracking-normal text-white sm:text-3xl">
-              Monitoramento energetico em tempo real
+              {APP_TITLE}
             </h1>
           </div>
 
@@ -269,19 +281,19 @@ export default function Home() {
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-slate-400">Potencia ativa</p>
+              <p className="text-sm font-medium text-slate-400">Potência ativa</p>
               <Zap className="h-5 w-5 text-emerald-300" />
             </div>
             <p className="mt-4 text-3xl font-semibold text-white">
               {latestData ? latestData.power.toFixed(0) : "--"}
               <span className="ml-2 text-base font-medium text-slate-400">W</span>
             </p>
-            <p className="mt-3 text-xs text-slate-500">Ultima leitura: {latestTimestamp}</p>
+            <p className="mt-3 text-xs text-slate-500">Última leitura: {latestTimestamp}</p>
           </article>
 
           <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-slate-400">Tensao</p>
+              <p className="text-sm font-medium text-slate-400">Tensão</p>
               <Gauge className="h-5 w-5 text-sky-300" />
             </div>
             <p className="mt-4 text-3xl font-semibold text-white">
@@ -300,7 +312,7 @@ export default function Home() {
               {latestData ? latestData.current.toFixed(2) : "--"}
               <span className="ml-2 text-base font-medium text-slate-400">A</span>
             </p>
-            <p className="mt-3 text-xs text-slate-500">Amostras no grafico: {chartData.length}</p>
+            <p className="mt-3 text-xs text-slate-500">Amostras no gráfico: {chartData.length}</p>
           </article>
 
           <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
@@ -312,7 +324,7 @@ export default function Home() {
               {moneyFormatter.format(consumption.estimated_cost_brl)}
             </p>
             <p className="mt-3 text-xs text-slate-500">
-              {numberFormatter.format(consumption.total_kwh)} kWh acumulados
+              {numberFormatter.format(consumption.total_kwh)} kWh nos últimos {CONSUMPTION_WINDOW_MINUTES} min
             </p>
           </article>
         </section>
@@ -321,7 +333,7 @@ export default function Home() {
           <article className="min-h-[420px] rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-white">Potencia ativa</h2>
+                <h2 className="text-lg font-semibold text-white">Potência ativa</h2>
               </div>
               <div className="flex items-center gap-2 text-sm text-slate-400">
                 <ShieldCheck className="h-4 w-4 text-cyan-300" />
@@ -360,7 +372,7 @@ export default function Home() {
                         borderRadius: 8,
                         color: "#e2e8f0",
                       }}
-                      formatter={(value) => [`${Number(value).toFixed(1)} W`, "Potencia"]}
+                      formatter={(value) => [`${Number(value).toFixed(1)} W`, "Potência"]}
                       labelStyle={{ color: "#cbd5e1" }}
                     />
                     <Line
@@ -404,7 +416,7 @@ export default function Home() {
             </article>
 
             <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
-              <h2 className="text-lg font-semibold text-white">Servicos</h2>
+              <h2 className="text-lg font-semibold text-white">Serviços</h2>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <dt className="text-slate-500">Sensor</dt>
                 <dd className="text-right text-slate-200">Ativo</dd>

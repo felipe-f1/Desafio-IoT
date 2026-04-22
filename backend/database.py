@@ -70,55 +70,86 @@ async def get_recent_readings(limit: int = 240) -> list[dict[str, Any]]:
         return [dict(record) for record in reversed(records)]
 
 
-async def get_consumption() -> dict[str, Any]:
+async def get_consumption(since_minutes: int | None = None) -> dict[str, Any]:
     if pool is None:
-        return {"data": [], "total_kwh": 0.0, "estimated_cost_brl": 0.0}
+        return {
+            "data": [],
+            "total_kwh": 0.0,
+            "estimated_cost_brl": 0.0,
+            "sample_count": 0,
+            "since_minutes": since_minutes,
+        }
 
     query = """
-        WITH ordered AS (
+        WITH filtered AS (
+            SELECT
+                time,
+                power
+            FROM sensor_data
+            WHERE ($1::integer IS NULL OR time >= now() - ($1::integer * INTERVAL '1 minute'))
+        ),
+        ordered AS (
             SELECT
                 time,
                 power,
-                LAG(time) OVER (ORDER BY time) AS previous_time
-            FROM sensor_data
+                LAG(time) OVER (ORDER BY time) AS previous_time,
+                LAG(power) OVER (ORDER BY time) AS previous_power
+            FROM filtered
+        ),
+        intervals AS (
+            SELECT
+                previous_time + ((time - previous_time) / 2.0) AS tariff_time,
+                EXTRACT(EPOCH FROM (time - previous_time)) AS duration_sec,
+                (previous_power + power) / 2.0 AS average_power
+            FROM ordered
+            WHERE previous_time IS NOT NULL
         ),
         energy AS (
             SELECT
-                CASE
-                    WHEN EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') >= 18
-                     AND EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') < 21
-                    THEN 'Ponta'
-                    ELSE 'Normal'
-                END AS tariff_type,
-                CASE
-                    WHEN EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') >= 18
-                     AND EXTRACT(HOUR FROM time AT TIME ZONE 'America/Sao_Paulo') < 21
-                    THEN 0.90
-                    ELSE 0.50
-                END AS rate_brl_per_kwh,
-                power
-                    * GREATEST(
-                        0,
-                        LEAST(
-                            COALESCE(EXTRACT(EPOCH FROM (time - previous_time)), 0),
-                            60
-                        )
-                    )
-                    / 3600.0
-                    / 1000.0 AS consumption_kwh
-            FROM ordered
+                tariff_time,
+                average_power * duration_sec / 3600.0 / 1000.0 AS consumption_kwh
+            FROM intervals
+            WHERE duration_sec > 0
+              AND duration_sec <= 5
         )
         SELECT
             tariff_type,
             rate_brl_per_kwh,
             COALESCE(SUM(consumption_kwh), 0)::double precision AS consumption_kwh,
             COALESCE(SUM(consumption_kwh * rate_brl_per_kwh), 0)::double precision AS estimated_cost_brl
-        FROM energy
+        FROM (
+            SELECT
+                CASE
+                    WHEN EXTRACT(HOUR FROM tariff_time AT TIME ZONE 'America/Sao_Paulo') >= 18
+                     AND EXTRACT(HOUR FROM tariff_time AT TIME ZONE 'America/Sao_Paulo') < 21
+                    THEN 'Ponta'
+                    ELSE 'Normal'
+                END AS tariff_type,
+                CASE
+                    WHEN EXTRACT(HOUR FROM tariff_time AT TIME ZONE 'America/Sao_Paulo') >= 18
+                     AND EXTRACT(HOUR FROM tariff_time AT TIME ZONE 'America/Sao_Paulo') < 21
+                    THEN 0.90::double precision
+                    ELSE 0.50::double precision
+                END AS rate_brl_per_kwh,
+                consumption_kwh
+            FROM energy
+        ) priced_energy
         GROUP BY tariff_type, rate_brl_per_kwh
         ORDER BY tariff_type
     """
     async with pool.acquire() as connection:
-        records = await connection.fetch(query)
+        records = await connection.fetch(query, since_minutes)
+        metadata = await connection.fetchrow(
+            """
+            SELECT
+                COUNT(*)::integer AS sample_count,
+                MIN(time) AS first_reading,
+                MAX(time) AS last_reading
+            FROM sensor_data
+            WHERE ($1::integer IS NULL OR time >= now() - ($1::integer * INTERVAL '1 minute'))
+            """,
+            since_minutes,
+        )
 
     data = [dict(record) for record in records]
     total_kwh = sum(float(record["consumption_kwh"]) for record in data)
@@ -128,4 +159,8 @@ async def get_consumption() -> dict[str, Any]:
         "data": data,
         "total_kwh": total_kwh,
         "estimated_cost_brl": estimated_cost,
+        "sample_count": int(metadata["sample_count"] or 0) if metadata else 0,
+        "first_reading": metadata["first_reading"].isoformat() if metadata and metadata["first_reading"] else None,
+        "last_reading": metadata["last_reading"].isoformat() if metadata and metadata["last_reading"] else None,
+        "since_minutes": since_minutes,
     }
