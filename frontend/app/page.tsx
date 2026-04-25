@@ -250,25 +250,25 @@ export default function Home() {
   const StatusIcon = connectionState === "online" ? Wifi : WifiOff;
 
   return (
-    <main className="min-h-screen bg-[#0b0f14] text-slate-100">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+    <main className="min-h-screen overflow-x-hidden bg-[#0b0f14] text-slate-100">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-6 sm:py-5 lg:px-8">
+        <header className="flex flex-col gap-4 border-b border-slate-800 pb-4 sm:pb-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
               {APP_NAME}
             </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-normal text-white sm:text-3xl">
+            <h1 className="mt-2 text-xl font-semibold leading-tight tracking-normal text-white sm:text-3xl">
               {APP_TITLE}
             </h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${statusTone}`}>
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:gap-3">
+            <div className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${statusTone}`}>
               <StatusIcon className="h-4 w-4" />
               <span className="capitalize">{connectionState}</span>
             </div>
             <button
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-800"
+              className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-800"
               onClick={() => void fetchConsumption()}
               type="button"
             >
@@ -278,49 +278,49 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <article className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium text-slate-400">Potência ativa</p>
               <Zap className="h-5 w-5 text-emerald-300" />
             </div>
-            <p className="mt-4 text-3xl font-semibold text-white">
+            <p className="mt-4 text-2xl font-semibold text-white sm:text-3xl">
               {latestData ? latestData.power.toFixed(0) : "--"}
               <span className="ml-2 text-base font-medium text-slate-400">W</span>
             </p>
             <p className="mt-3 text-xs text-slate-500">Última leitura: {latestTimestamp}</p>
           </article>
 
-          <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
+          <article className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium text-slate-400">Tensão</p>
               <Gauge className="h-5 w-5 text-sky-300" />
             </div>
-            <p className="mt-4 text-3xl font-semibold text-white">
+            <p className="mt-4 text-2xl font-semibold text-white sm:text-3xl">
               {latestData ? latestData.voltage.toFixed(1) : "--"}
               <span className="ml-2 text-base font-medium text-slate-400">V</span>
             </p>
             <p className="mt-3 text-xs text-slate-500">Tarifa atual: {currentTariff}</p>
           </article>
 
-          <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
+          <article className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium text-slate-400">Corrente</p>
               <Activity className="h-5 w-5 text-amber-300" />
             </div>
-            <p className="mt-4 text-3xl font-semibold text-white">
+            <p className="mt-4 text-2xl font-semibold text-white sm:text-3xl">
               {latestData ? latestData.current.toFixed(2) : "--"}
               <span className="ml-2 text-base font-medium text-slate-400">A</span>
             </p>
             <p className="mt-3 text-xs text-slate-500">Amostras no gráfico: {chartData.length}</p>
           </article>
 
-          <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
+          <article className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium text-slate-400">Custo estimado</p>
               <CircleDollarSign className="h-5 w-5 text-lime-300" />
             </div>
-            <p className="mt-4 text-3xl font-semibold text-white">
+            <p className="mt-4 text-2xl font-semibold text-white sm:text-3xl">
               {moneyFormatter.format(consumption.estimated_cost_brl)}
             </p>
             <p className="mt-3 text-xs text-slate-500">
@@ -329,8 +329,8 @@ export default function Home() {
           </article>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
-          <article className="min-h-[420px] rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
+        <section className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <article className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 p-3 sm:min-h-[420px] sm:p-5">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-white">Potência ativa</h2>
@@ -341,29 +341,29 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="h-[340px] w-full">
+            <div className="h-[300px] w-full sm:h-[340px]">
               {chartData.length === 0 ? (
                 <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-800 text-sm text-slate-500">
                   Aguardando leituras do sensor
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 12, right: 20, bottom: 8, left: 0 }}>
+                  <LineChart data={chartData} margin={{ top: 12, right: 8, bottom: 8, left: -10 }}>
                     <CartesianGrid stroke="#1f2937" strokeDasharray="4 4" vertical={false} />
                     <XAxis
                       dataKey="timeLabel"
                       minTickGap={28}
                       stroke="#64748b"
-                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      tick={{ fill: "#94a3b8", fontSize: 10 }}
                       tickLine={false}
                     />
                     <YAxis
                       domain={["dataMin - 150", "dataMax + 150"]}
                       stroke="#64748b"
-                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      tick={{ fill: "#94a3b8", fontSize: 10 }}
                       tickFormatter={(value) => `${Number(value).toFixed(0)} W`}
                       tickLine={false}
-                      width={72}
+                      width={58}
                     />
                     <Tooltip
                       contentStyle={{
@@ -389,8 +389,8 @@ export default function Home() {
             </div>
           </article>
 
-          <aside className="flex flex-col gap-4">
-            <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
+          <aside className="flex min-w-0 flex-col gap-3 sm:gap-4">
+            <article className="rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
               <h2 className="text-lg font-semibold text-white">Tarifas</h2>
               <div className="mt-5 space-y-4">
                 <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-4">
@@ -415,7 +415,7 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="rounded-lg border border-slate-800 bg-slate-950 p-5">
+            <article className="rounded-lg border border-slate-800 bg-slate-950 p-4 sm:p-5">
               <h2 className="text-lg font-semibold text-white">Serviços</h2>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <dt className="text-slate-500">Sensor</dt>
